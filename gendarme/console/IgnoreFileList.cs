@@ -49,7 +49,7 @@ namespace Gendarme {
 			: base (runner)
 		{
 			Push (fileName);
-			Parse ();
+			Parse (runner);
 		}
 
 		private void Push (string fileName)
@@ -59,7 +59,7 @@ namespace Gendarme {
 			}
 		}
 
-		private void Parse ()
+		private void Parse (IRunner runner)
 		{
 			char [] buffer = new char [4096];
 			while (files.Count > 0) {
@@ -67,7 +67,7 @@ namespace Gendarme {
 				using (StreamLineReader sr = new StreamLineReader (fileName)) {
 					while (!sr.EndOfStream) {
 						int length = sr.ReadLine (buffer, 0, buffer.Length);
-						ProcessLine (buffer, length);
+                        ProcessLine(runner, buffer, length);
 					}
 				}
 			}
@@ -101,7 +101,7 @@ namespace Gendarme {
 			return new string (buffer, start, end - start);
 		}
 
-		private void ProcessLine (char [] buffer, int length)
+		private void ProcessLine (IRunner runner, char [] buffer, int length)
 		{
 			if (length < 1)
 				return;
@@ -131,6 +131,12 @@ namespace Gendarme {
 			case 'N': // namespace - special case (no need to resolve)
 				base.Add (current_rule, NamespaceDefinition.GetDefinition (GetString (buffer, length)));
 				break;
+            case 'P': // ignore type (no space allowed) in all rules
+                foreach (Rule rule in runner.Rules) {
+                    Add(types, rule.FullName, GetString(buffer, length));
+                    base.Add(rule.FullName, NamespaceDefinition.GetDefinition(GetString(buffer, length)));
+			    }
+                break;
 			case '@': // include file
 				files.Push (GetString (buffer, length));
 				break;
