@@ -61,13 +61,13 @@ namespace Gendarme {
 
 		private void Parse (IRunner runner)
 		{
-			char [] buffer = new char [4096];
 			while (files.Count > 0) {
 				string fileName = files.Pop ();
-				using (StreamLineReader sr = new StreamLineReader (fileName)) {
-					while (!sr.EndOfStream) {
-						int length = sr.ReadLine (buffer, 0, buffer.Length);
-                        ProcessLine(runner, buffer, length);
+				using (StreamReader sr = new StreamReader (fileName)) {
+					string s = sr.ReadLine ();
+					while (s != null) {
+						ProcessLine (runner, s);
+						s = sr.ReadLine ();
 					}
 				}
 			}
@@ -87,33 +87,19 @@ namespace Gendarme {
 			rules.Add (rule);
 		}
 
-		static string GetString (char [] buffer, int length)
+		private void ProcessLine (IRunner runner, string line)
 		{
-			// skip the 'type' + ':' characters when looking for whitespace separator(s)
-			int start = 2;
-			while (Char.IsWhiteSpace (buffer [start]) && (start < buffer.Length))
-				start++;
-
-			int end = length;
-			while (Char.IsWhiteSpace (buffer [end]) && (end >= start))
-				end--;
-
-			return new string (buffer, start, end - start);
-		}
-
-		private void ProcessLine (IRunner runner, char [] buffer, int length)
-		{
-			if (length < 1)
+			if (line.Length < 1)
 				return;
 
-			switch (buffer [0]) {
+			switch (line [0]) {
 			case '#': // comment
 				break;
 			case 'R': // rule
-				current_rule = GetString (buffer, length);
+				current_rule = line.Substring (line.LastIndexOf (' ') + 1);
 				break;
 			case 'A': // assembly - we support Name, FullName and *
-				string target = GetString (buffer, length);
+				string target = line.Substring (2).Trim ();
 				if (target == "*") {
 					foreach (AssemblyDefinition assembly in Runner.Assemblies) {
 						Add (assemblies, current_rule, assembly.Name.FullName);
@@ -123,25 +109,25 @@ namespace Gendarme {
 				}
 				break;
 			case 'T': // type (no space allowed)
-				Add (types, current_rule, GetString (buffer, length));
+				Add (types, current_rule, line.Substring (line.LastIndexOf (' ') + 1));
 				break;
 			case 'M': // method
-				Add (methods, current_rule, GetString (buffer, length));
+				Add (methods, current_rule, line.Substring (2).Trim ());
 				break;
 			case 'N': // namespace - special case (no need to resolve)
-				base.Add (current_rule, NamespaceDefinition.GetDefinition (GetString (buffer, length)));
+				base.Add (current_rule, NamespaceDefinition.GetDefinition (line.Substring (2).Trim ()));
 				break;
-            case 'P': // ignore type (no space allowed) in all rules
-                foreach (Rule rule in runner.Rules) {
-                    Add(types, rule.FullName, GetString(buffer, length));
-                    base.Add(rule.FullName, NamespaceDefinition.GetDefinition(GetString(buffer, length)));
-			    }
-                break;
+			case 'P': // ignore type (no space allowed) in all rules
+				foreach (Rule rule in runner.Rules) {
+					Add(types, rule.FullName, line.Substring (2).Trim ());
+					base.Add(rule.FullName, NamespaceDefinition.GetDefinition(line.Substring (2).Trim ()));
+				}
+				break;
 			case '@': // include file
-				files.Push (GetString (buffer, length));
+				files.Push (line.Substring (2).Trim ());
 				break;
 			default:
-				Console.Error.WriteLine ("Bad ignore entry : '{0}'", new string (buffer));
+				Console.Error.WriteLine ("Bad ignore entry : '{0}'", line);
 				break;
 			}
 		}
@@ -168,13 +154,14 @@ namespace Gendarme {
 
 				foreach (ModuleDefinition module in assembly.Modules) {
 					foreach (TypeDefinition type in module.GetAllTypes ()) {
-						if (types.TryGetValue (type.GetFullName (), out rules)) {
+						if (types.TryGetValue (type.FullName, out rules)) {
 							AddList (type, rules);
 						}
 
 						if (type.HasMethods) {
 							foreach (MethodDefinition method in type.Methods) {
-								if (methods.TryGetValue (method.GetFullName (), out rules)) {
+								// FIXME avoid (allocations in) ToString call
+								if (methods.TryGetValue (method.ToString (), out rules)) {
 									AddList (method, rules);
 								}
 							}
